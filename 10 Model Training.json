@@ -1,0 +1,296 @@
+{
+	"properties": {},
+	"icon": "check",
+	"description": "Marathon Time Prediction - 10 Train",
+	"processes": {
+		"python3operator1": {
+			"component": "com.sap.system.python3Operator",
+			"metadata": {
+				"label": "Python3",
+				"x": 285,
+				"y": 72,
+				"height": 80,
+				"width": 120,
+				"extensible": true,
+				"config": {
+					"metadata": {},
+					"script": "# Example Python script to perform training on input data & generate Metrics & Model Blob\r\ndef on_input(data):\r\n    \r\n    # Obtain data\r\n    import pandas as pd\r\n    import io\r\n    df_data = pd.read_csv(io.StringIO(data), sep=\";\")\r\n    \r\n    # Get predictor and target\r\n    x = df_data[[\"HALFMARATHON_MINUTES\"]]\r\n    y_true = df_data[\"MARATHON_MINUTES\"]\r\n    \r\n    # Train regression\r\n    from sklearn.linear_model import LinearRegression\r\n    lm = LinearRegression()\r\n    lm.fit(x, y_true)\r\n    \r\n    # Model quality\r\n    import numpy as np\r\n    y_pred = lm.predict(x)\r\n    mse = np.mean((y_pred - y_true)**2)\r\n    rmse = np.sqrt(mse)\r\n    rmse = round(rmse, 2)\r\n    \r\n    # to send metrics to the Submit Metrics operator, create a Python dictionary of key-value pairs\r\n    metrics_dict = {\"RMSE\": str(rmse), \"n\": str(len(df_data))}\r\n    \r\n    # send the metrics to the output port - Submit Metrics operator will use this to persist the metrics \r\n    api.send(\"metrics\", api.Message(metrics_dict))\r\n\r\n    # create & send the model blob to the output port - Artifact Producer operator will use this to persist the model and create an artifact ID\r\n    import pickle\r\n    model_blob = pickle.dumps(lm)\r\n    api.send(\"modelBlob\", model_blob)\r\n    \r\napi.set_port_callback(\"input\", on_input)"
+				},
+				"additionalinports": [
+					{
+						"name": "input",
+						"type": "string"
+					}
+				],
+				"additionaloutports": [
+					{
+						"name": "metrics",
+						"type": "message"
+					},
+					{
+						"name": "modelBlob",
+						"type": "blob"
+					}
+				]
+			}
+		},
+		"readfile1": {
+			"component": "com.sap.storage.read",
+			"metadata": {
+				"label": "Read File",
+				"x": 17,
+				"y": 72,
+				"height": 80,
+				"width": 120,
+				"config": {
+					"metadata": {},
+					"path": "${inputFilePath}",
+					"batchRead": false,
+					"onlyReadOnChange": true,
+					"service": "S3",
+					"awsConnection": {
+						"configurationType": "Configuration Manager",
+						"connectionID": "S3"
+					},
+					"awsBucket": "bucket1"
+				}
+			}
+		},
+		"tostringconverter1": {
+			"component": "com.sap.util.toStringConverter",
+			"metadata": {
+				"label": "ToString Converter",
+				"x": 186,
+				"y": 87,
+				"height": 50,
+				"width": 50,
+				"config": {}
+			}
+		},
+		"graphterminator1": {
+			"component": "com.sap.util.graphTerminator",
+			"metadata": {
+				"label": "Graph Terminator",
+				"x": 1053.9999961853027,
+				"y": 72,
+				"height": 80,
+				"width": 120,
+				"config": {}
+			}
+		},
+		"python3operator2": {
+			"component": "com.sap.system.python3Operator",
+			"metadata": {
+				"label": "Operators Complete",
+				"x": 884.9999961853027,
+				"y": 72,
+				"height": 80,
+				"width": 120,
+				"extensible": true,
+				"config": {
+					"script": "# When both input ports signals arive, the Artifact Producer & Submit Metrics have completed - safe to terminate the graph.\n\ndef on_inputs_ready(metrics_resp, artifact_id):\n    # both input ports have data - previous operators have completed. Send a message as output to stop the graph\n    api.send(\"output\", api.Message(\"Operators complete.\"))\n\napi.set_port_callback([\"metricsResponse\", \"artifactId\"], on_inputs_ready)\n\n"
+				},
+				"additionalinports": [
+					{
+						"name": "metricsResponse",
+						"type": "message"
+					},
+					{
+						"name": "artifactId",
+						"type": "string"
+					}
+				],
+				"additionaloutports": [
+					{
+						"name": "output",
+						"type": "message"
+					}
+				]
+			}
+		},
+		"submitmetrics1": {
+			"component": "com.sap.ml.submitMetrics",
+			"metadata": {
+				"label": "Submit Metrics",
+				"x": 469.9999990463257,
+				"y": 12,
+				"height": 80,
+				"width": 120,
+				"extensible": false,
+				"config": {}
+			}
+		},
+		"tostringconverter2": {
+			"component": "com.sap.util.toStringConverter",
+			"metadata": {
+				"label": "ToString Converter",
+				"x": 769.999997138977,
+				"y": 101.49999976158142,
+				"height": 50,
+				"width": 50,
+				"config": {}
+			}
+		},
+		"tomessageconverter1": {
+			"component": "com.sap.util.toMessageConverter",
+			"metadata": {
+				"label": "ToMessage Converter",
+				"x": 654.9999980926514,
+				"y": 101.49999976158142,
+				"height": 50,
+				"width": 50,
+				"config": {}
+			}
+		},
+		"artifactproducer1": {
+			"component": "com.sap.ml.artifact.producer",
+			"metadata": {
+				"label": "Artifact Producer",
+				"x": 469.9999990463257,
+				"y": 132,
+				"height": 80,
+				"width": 120,
+				"extensible": true,
+				"config": {
+					"artifactName": "${newArtifactName}",
+					"artifactKind": "model"
+				}
+			}
+		}
+	},
+	"groups": [
+		{
+			"name": "group1",
+			"nodes": [
+				"python3operator1"
+			],
+			"metadata": {
+				"description": "Group"
+			},
+			"tags": {
+				"marathontimes": ""
+			}
+		}
+	],
+	"connections": [
+		{
+			"metadata": {
+				"points": "240,112 280,112"
+			},
+			"src": {
+				"port": "outstring",
+				"process": "tostringconverter1"
+			},
+			"tgt": {
+				"port": "input",
+				"process": "python3operator1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "409,103 436.99999952316284,103 436.99999952316284,52 464.9999990463257,52"
+			},
+			"src": {
+				"port": "metrics",
+				"process": "python3operator1"
+			},
+			"tgt": {
+				"port": "metrics",
+				"process": "submitmetrics1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "141,121 181,121"
+			},
+			"src": {
+				"port": "outFile",
+				"process": "readfile1"
+			},
+			"tgt": {
+				"port": "inmessage",
+				"process": "tostringconverter1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "593.9999990463257,52 621.9999985694885,52 621.9999985694885,72.50000023841858 851.9999966621399,72.50000023841858 851.9999966621399,103 879.9999961853027,103"
+			},
+			"src": {
+				"port": "response",
+				"process": "submitmetrics1"
+			},
+			"tgt": {
+				"port": "metricsResponse",
+				"process": "python3operator2"
+			}
+		},
+		{
+			"metadata": {
+				"points": "1008.9999961853027,112 1048.9999961853027,112"
+			},
+			"src": {
+				"port": "output",
+				"process": "python3operator2"
+			},
+			"tgt": {
+				"port": "stop",
+				"process": "graphterminator1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "409,121 436.99999952316284,121 436.99999952316284,172 464.9999990463257,172"
+			},
+			"src": {
+				"port": "modelBlob",
+				"process": "python3operator1"
+			},
+			"tgt": {
+				"port": "inArtifact",
+				"process": "artifactproducer1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "823.999997138977,126.49999976158142 851.9999966621399,126.49999976158142 851.9999966621399,121 879.9999961853027,121"
+			},
+			"src": {
+				"port": "outstring",
+				"process": "tostringconverter2"
+			},
+			"tgt": {
+				"port": "artifactId",
+				"process": "python3operator2"
+			}
+		},
+		{
+			"metadata": {
+				"points": "593.9999990463257,163 621.9999985694885,163 621.9999985694885,117.49999976158142 649.9999980926514,117.49999976158142"
+			},
+			"src": {
+				"port": "outArtifact",
+				"process": "artifactproducer1"
+			},
+			"tgt": {
+				"port": "inbody",
+				"process": "tomessageconverter1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "708.9999980926514,126.49999976158142 736.9999976158142,126.49999976158142 736.9999976158142,135.49999976158142 764.999997138977,135.49999976158142"
+			},
+			"src": {
+				"port": "out",
+				"process": "tomessageconverter1"
+			},
+			"tgt": {
+				"port": "inmessage",
+				"process": "tostringconverter2"
+			}
+		}
+	],
+	"inports": {},
+	"outports": {}
+}
