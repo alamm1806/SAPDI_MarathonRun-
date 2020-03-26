@@ -1,0 +1,4 @@
+FROM $com.sap.opensuse.python36
+RUN python3.6 -m pip install numpy
+RUN python3.6 -m pip install sklearn
+RUN python3.6 -m pip install pandas
